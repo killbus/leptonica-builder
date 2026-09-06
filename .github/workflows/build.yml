@@ -1,0 +1,429 @@
+# Leptonica WASM candidate build pipeline.
+#
+# push to main runs only the local contract tests (no source checkout, no
+# dispatch artifacts). repository_dispatch(source-release-set-v1) from the
+# private source repository runs the full dispatched pipeline.
+#
+# Discipline: this workflow contains no actions/cache step. Every dispatched
+# build cold-installs the pinned emsdk and verifies the toolchain archive
+# hashes in-run (scripts/verify-toolchain.mjs), so release artifacts derive
+# from toolchain bytes verified this run.
+
+name: Leptonica WASM Build
+
+on:
+  push:
+    branches:
+      - main
+  repository_dispatch:
+    types:
+      - source-release-set-v1
+
+concurrency:
+  group: leptonica-build-${{ github.event.client_payload.release_id || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-release-set:
+    if: ${{ github.event_name == 'repository_dispatch' }}
+    runs-on: ubuntu-latest
+    environment: Candidate Build
+    timeout-minutes: 10
+    name: Resolve release set
+    outputs:
+      contract_version: ${{ steps.contract.outputs.contract_version }}
+      source_revision: ${{ steps.contract.outputs.source_revision }}
+      release_id: ${{ steps.contract.outputs.release_id }}
+      targets: ${{ steps.contract.outputs.targets }}
+      leptonica_pin_sha: ${{ steps.source.outputs.leptonica_pin_sha }}
+
+    steps:
+      # v7.0.1 (2026-07-20): https://github.com/actions/checkout/releases/tag/v7.0.1
+      - name: Checkout builder repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Validate dispatched contract
+        id: contract
+        env:
+          CONFIGURED_SOURCE_REPOSITORY: ${{ secrets.SOURCE_REPOSITORY }}
+          CONTRACT_VERSION: ${{ github.event.client_payload.contract_version }}
+          SOURCE_REVISION: ${{ github.event.client_payload.source_revision }}
+          RELEASE_ID: ${{ github.event.client_payload.release_id }}
+          DISPATCH_MANIFEST: ${{ toJSON(github.event.client_payload.manifest) }}
+        run: |
+          [[ "$CONFIGURED_SOURCE_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
+            echo "::error::Candidate Build secret SOURCE_REPOSITORY is missing or invalid"
+            exit 1
+          }
+          printf '%s\n' "$DISPATCH_MANIFEST" > release-set.json
+          bash ci/build-info-contract.sh validate-source-manifest \
+            --manifest release-set.json \
+            --contract-version "$CONTRACT_VERSION" \
+            --source-revision "$SOURCE_REVISION" \
+            --release-id "$RELEASE_ID"
+          {
+            echo "contract_version=$CONTRACT_VERSION"
+            echo "source_revision=$SOURCE_REVISION"
+            echo "release_id=$RELEASE_ID"
+            echo "targets=$(bash ci/build-info-contract.sh print-release-matrix \
+              --manifest release-set.json \
+              --contract-version "$CONTRACT_VERSION" \
+              --source-revision "$SOURCE_REVISION" \
+              --release-id "$RELEASE_ID")"
+          } >> "$GITHUB_OUTPUT"
+
+      # v7.0.1 (2026-07-20): https://github.com/actions/checkout/releases/tag/v7.0.1
+      - name: Checkout compilation source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          repository: ${{ secrets.SOURCE_REPOSITORY }}
+          ref: ${{ steps.contract.outputs.source_revision }}
+          path: source
+          ssh-key: ${{ secrets.SOURCE_READ_DEPLOY_KEY }}
+          submodules: 'false'
+
+      - name: Verify pinned source contract
+        id: source
+        env:
+          SOURCE_REVISION: ${{ steps.contract.outputs.source_revision }}
+          RELEASE_ID: ${{ steps.contract.outputs.release_id }}
+        run: |
+          [[ "$(git -C source rev-parse HEAD)" == "$SOURCE_REVISION" ]] || {
+            echo "::error::Source checkout differs from the dispatched revision"
+            exit 1
+          }
+          python3 source/build/release_set.py --repo-root source verify \
+            --source-revision "$SOURCE_REVISION" \
+            --manifest release-set.json \
+            --release-id "$RELEASE_ID"
+          LEPTONICA_PIN_SHA=$(jq -er '.leptonica.commit' source/vendor/versions.json)
+          [[ "$LEPTONICA_PIN_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::vendor/versions.json leptonica commit is not a pinned SHA"
+            exit 1
+          }
+          echo "leptonica_pin_sha=$LEPTONICA_PIN_SHA" >> "$GITHUB_OUTPUT"
+
+  build-info-contract-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    name: Build-info contract test
+
+    steps:
+      # v7.0.1 (2026-07-20): https://github.com/actions/checkout/releases/tag/v7.0.1
+      - name: Checkout builder repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Test build-info contract
+        run: bash ci/run-tests.sh
+
+  build:
+    if: ${{ github.event_name == 'repository_dispatch' }}
+    needs: resolve-release-set
+    runs-on: ubuntu-latest
+    environment: Candidate Build
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve-release-set.outputs.targets) }}
+    name: Candidate build (${{ matrix.build_role }}, ${{ matrix.target_id }})
+
+    steps:
+      # v7.0.1 (2026-07-20): https://github.com/actions/checkout/releases/tag/v7.0.1
+      - name: Checkout compilation source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          repository: ${{ secrets.SOURCE_REPOSITORY }}
+          ref: ${{ needs.resolve-release-set.outputs.source_revision }}
+          ssh-key: ${{ secrets.SOURCE_READ_DEPLOY_KEY }}
+          submodules: 'false'
+
+      - name: Verify resolved source revisions
+        id: source-check
+        env:
+          EXPECTED_SOURCE_REPOSITORY_SHA: ${{ needs.resolve-release-set.outputs.source_revision }}
+          EXPECTED_LEPTONICA_PIN_SHA: ${{ needs.resolve-release-set.outputs.leptonica_pin_sha }}
+        run: |
+          SOURCE_REPOSITORY_SHA=$(git rev-parse HEAD)
+          LEPTONICA_PIN_SHA=$(jq -er '.leptonica.commit' vendor/versions.json)
+
+          if [[ "$SOURCE_REPOSITORY_SHA" != "$EXPECTED_SOURCE_REPOSITORY_SHA" ]]; then
+            echo "::error::Source checkout differs from the resolved revision"
+            exit 1
+          fi
+
+          if [[ "$LEPTONICA_PIN_SHA" != "$EXPECTED_LEPTONICA_PIN_SHA" ]]; then
+            echo "::error::Leptonica pin differs from the resolved revision"
+            exit 1
+          fi
+
+          echo "leptonica_pin_sha=$LEPTONICA_PIN_SHA" >> "$GITHUB_OUTPUT"
+
+      # v7.0.1 (2026-07-20): https://github.com/actions/checkout/releases/tag/v7.0.1
+      - name: Checkout builder automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          path: .builder-ci
+
+      - name: Verify release target
+        env:
+          CONTRACT_VERSION: ${{ needs.resolve-release-set.outputs.contract_version }}
+          SOURCE_REVISION: ${{ needs.resolve-release-set.outputs.source_revision }}
+          RELEASE_ID: ${{ needs.resolve-release-set.outputs.release_id }}
+          TARGET_ID: ${{ matrix.target_id }}
+          BUILD_ROLE: ${{ matrix.build_role }}
+          DISPATCH_MANIFEST: ${{ toJSON(github.event.client_payload.manifest) }}
+        run: |
+          printf '%s\n' "$DISPATCH_MANIFEST" > release-set.json
+          python3 build/release_set.py verify \
+            --source-revision "$SOURCE_REVISION" \
+            --manifest release-set.json \
+            --release-id "$RELEASE_ID" \
+            --target-id "$TARGET_ID"
+          bash .builder-ci/ci/build-info-contract.sh validate-source-manifest \
+            --manifest release-set.json \
+            --contract-version "$CONTRACT_VERSION" \
+            --source-revision "$SOURCE_REVISION" \
+            --release-id "$RELEASE_ID"
+          jq -e --arg target_id "$TARGET_ID" --arg build_role "$BUILD_ROLE" \
+            '.targets[] | select(.target_id == $target_id) | .build_role == $build_role' \
+            release-set.json >/dev/null
+
+      # v7.0.0 (2026-07-14): https://github.com/actions/setup-node/releases/tag/v7.0.0
+      - name: Setup Node.js 20
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '20'
+
+      - name: Resolve toolchain pins
+        id: pins
+        run: |
+          EMSDK_COMMIT=$(jq -er '.emsdk.commit' vendor/versions.json)
+          SDK_VERSION=$(jq -er '.emsdk.sdkVersion' vendor/versions.json)
+          CMAKE_TOOL=$(jq -er '.emsdk.cmakeTool' vendor/versions.json)
+          NINJA_TOOL=$(jq -er '.emsdk.ninjaTool' vendor/versions.json)
+          {
+            echo "emsdk_commit=$EMSDK_COMMIT"
+            echo "sdk_version=$SDK_VERSION"
+            echo "cmake_tool=$CMAKE_TOOL"
+            echo "ninja_tool=$NINJA_TOOL"
+          } >> "$GITHUB_OUTPUT"
+
+      # Cold install on every dispatched build -- no cache layer by design:
+      # release artifacts must derive from toolchain bytes verified in this
+      # run. EMSDK_KEEP_DOWNLOADS=1 keeps the archives so
+      # scripts/verify-toolchain.mjs can hash them against the whitelist in
+      # vendor/versions.json before the build runs.
+      - name: Install emsdk
+        run: |
+          source .builder-ci/ci/network-retry.sh
+          prepare_emsdk_checkout_once() {
+            rm -rf tmp/emsdk
+            git clone --depth 1 https://github.com/emscripten-core/emsdk.git tmp/emsdk
+            git -C tmp/emsdk fetch --depth 1 origin ${{ steps.pins.outputs.emsdk_commit }}
+          }
+          network_retry 'prepare pinned emsdk checkout' \
+            prepare_emsdk_checkout_once
+          git -C tmp/emsdk checkout ${{ steps.pins.outputs.emsdk_commit }}
+          network_retry 'install pinned emsdk toolchain' env EMSDK_KEEP_DOWNLOADS=1 \
+            ./tmp/emsdk/emsdk install \
+              ${{ steps.pins.outputs.sdk_version }} \
+              ${{ steps.pins.outputs.cmake_tool }} \
+              ${{ steps.pins.outputs.ninja_tool }}
+          ./tmp/emsdk/emsdk activate \
+            ${{ steps.pins.outputs.sdk_version }} \
+            ${{ steps.pins.outputs.cmake_tool }} \
+            ${{ steps.pins.outputs.ninja_tool }}
+          node scripts/verify-toolchain.mjs
+          rm -rf tmp/emsdk/downloads
+
+      - name: Build release target
+        env:
+          SOURCE_REVISION: ${{ needs.resolve-release-set.outputs.source_revision }}
+          RELEASE_ID: ${{ needs.resolve-release-set.outputs.release_id }}
+          TARGET_ID: ${{ matrix.target_id }}
+        run: |
+          # emsdk activation mutates only the install step's shell. Reload its
+          # environment here so release_set.py and its child build processes
+          # receive the pinned emcc/emcmake toolchain.
+          source ./tmp/emsdk/emsdk_env.sh
+          [[ -z "${BUILD_VARIANT+x}" && -z "${PRODUCT_LOCK+x}" && -z "${BUILD_TYPE+x}" ]] || {
+            echo "::error::Private build selectors are not accepted by this workflow"
+            exit 1
+          }
+          python3 build/release_set.py build \
+            --source-revision "$SOURCE_REVISION" \
+            --release-id "$RELEASE_ID" \
+            --target-id "$TARGET_ID"
+
+      - name: Smoke test
+        run: node scripts/smoke.mjs dist
+
+      - name: Check exports
+        run: node scripts/check-exports.mjs dist
+
+      - name: Prepare candidate transport tooling
+        run: bash .builder-ci/ci/install-age.sh
+
+      - name: Prepare candidate transport
+        env:
+          CONTRACT_VERSION: ${{ needs.resolve-release-set.outputs.contract_version }}
+          SOURCE_REVISION: ${{ needs.resolve-release-set.outputs.source_revision }}
+          RELEASE_ID: ${{ needs.resolve-release-set.outputs.release_id }}
+          TARGET_ID: ${{ matrix.target_id }}
+          BUILD_ROLE: ${{ matrix.build_role }}
+          MATERIALIZATION_RECIPIENT: ${{ vars.CANDIDATE_MATERIALIZATION_RECIPIENT }}
+          MATERIALIZATION_KEY_ID: ${{ vars.CANDIDATE_MATERIALIZATION_KEY_ID }}
+        run: |
+          cleanup_plaintext() {
+            rm -rf candidate-payload dist
+          }
+          trap cleanup_plaintext EXIT
+
+          mkdir -p candidate-payload candidate-metadata
+          cp -r dist candidate-payload/
+          cp README.md LICENSE candidate-payload/
+
+          bash .builder-ci/ci/build-info-contract.sh create-candidate \
+            --output candidate-payload/build-info.json \
+            --payload-dir candidate-payload \
+            --source-build-info candidate-payload/dist/build-info.json \
+            --release-manifest release-set.json \
+            --contract-version "$CONTRACT_VERSION" \
+            --source-revision "$SOURCE_REVISION" \
+            --release-id "$RELEASE_ID" \
+            --target-id "$TARGET_ID" \
+            --build-timestamp "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --workflow-run-id "${{ github.run_id }}" \
+            --workflow-run-number "${{ github.run_number }}" \
+            --workflow-run-attempt "${{ github.run_attempt }}" \
+            --repository "${{ github.repository }}" \
+            --builder-sha "${{ github.sha }}" \
+            --leptonica-pin-sha "${{ steps.source-check.outputs.leptonica_pin_sha }}"
+          cp candidate-payload/build-info.json "candidate-metadata/$TARGET_ID.json"
+
+          bash .builder-ci/ci/candidate-transport.sh prepare \
+            --input-dir candidate-payload \
+            --output-dir candidate-transport \
+            --recipient "$MATERIALIZATION_RECIPIENT" \
+            --key-id "$MATERIALIZATION_KEY_ID" \
+            --release-id "$RELEASE_ID" \
+            --target-id "$TARGET_ID" \
+            --source-revision "$SOURCE_REVISION" \
+            --build-role "$BUILD_ROLE"
+          cleanup_plaintext
+          [[ ! -e candidate-payload && ! -e dist ]] || {
+            echo "::error::Plaintext candidate cleanup failed"
+            exit 1
+          }
+
+      # v7.0.1 (2026-04-10): https://github.com/actions/upload-artifact/releases/tag/v7.0.1
+      - name: Upload candidate transport
+        id: upload-candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: candidate-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.target_id }}
+          path: candidate-transport/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Record candidate evidence
+        env:
+          TARGET_ID: ${{ matrix.target_id }}
+          MATERIALIZATION_KEY_ID: ${{ vars.CANDIDATE_MATERIALIZATION_KEY_ID }}
+        run: |
+          bash .builder-ci/ci/build-info-contract.sh attach-candidate-artifact \
+            --candidate "candidate-metadata/$TARGET_ID.json" \
+            --transport-dir candidate-transport \
+            --output "candidate-evidence/$TARGET_ID.json" \
+            --expected-key-id "$MATERIALIZATION_KEY_ID" \
+            --artifact-name "candidate-${{ github.run_id }}-${{ github.run_attempt }}-$TARGET_ID" \
+            --artifact-id "${{ steps.upload-candidate.outputs.artifact-id }}" \
+            --artifact-digest "${{ steps.upload-candidate.outputs.artifact-digest }}"
+
+      # v7.0.1 (2026-04-10): https://github.com/actions/upload-artifact/releases/tag/v7.0.1
+      - name: Upload candidate evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: candidate-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.target_id }}
+          path: candidate-evidence/${{ matrix.target_id }}.json
+          if-no-files-found: error
+          retention-days: 1
+
+  accept-candidates:
+    if: ${{ github.event_name == 'repository_dispatch' }}
+    needs:
+      - resolve-release-set
+      - build-info-contract-test
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: Accept candidate builds
+    env:
+      CONTRACT_VERSION: ${{ needs.resolve-release-set.outputs.contract_version }}
+      SOURCE_REVISION: ${{ needs.resolve-release-set.outputs.source_revision }}
+      RELEASE_ID: ${{ needs.resolve-release-set.outputs.release_id }}
+      EXPECTED_BUILDER_SHA: ${{ github.sha }}
+      EXPECTED_LEPTONICA_PIN_SHA: ${{ needs.resolve-release-set.outputs.leptonica_pin_sha }}
+      EXPECTED_REPOSITORY: ${{ github.repository }}
+      EXPECTED_WORKFLOW_RUN_ID: ${{ github.run_id }}
+      EXPECTED_WORKFLOW_RUN_NUMBER: ${{ github.run_number }}
+      EXPECTED_WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
+
+    steps:
+      # v7.0.1 (2026-07-20): https://github.com/actions/checkout/releases/tag/v7.0.1
+      - name: Checkout builder repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Restore dispatched release manifest
+        env:
+          DISPATCH_MANIFEST: ${{ toJSON(github.event.client_payload.manifest) }}
+        run: printf '%s\n' "$DISPATCH_MANIFEST" > release-set.json
+
+      # v8.0.1 (2026-03-11): https://github.com/actions/download-artifact/releases/tag/v8.0.1
+      - name: Download candidate evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: candidate-evidence-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: candidate-evidence
+          merge-multiple: true
+
+      - name: Validate and accept candidates
+        run: |
+          bash ci/build-info-contract.sh accept-candidate-set \
+            --release-manifest release-set.json \
+            --evidence-dir candidate-evidence \
+            --output-dir accepted \
+            --accepted-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --contract-version "$CONTRACT_VERSION" \
+            --source-revision "$SOURCE_REVISION" \
+            --release-id "$RELEASE_ID" \
+            --repository "$EXPECTED_REPOSITORY" \
+            --builder-sha "$EXPECTED_BUILDER_SHA" \
+            --leptonica-pin-sha "$EXPECTED_LEPTONICA_PIN_SHA" \
+            --workflow-run-id "$EXPECTED_WORKFLOW_RUN_ID" \
+            --workflow-run-number "$EXPECTED_WORKFLOW_RUN_NUMBER" \
+            --workflow-run-attempt "$EXPECTED_WORKFLOW_RUN_ATTEMPT"
+
+      # v7.0.1 (2026-04-10): https://github.com/actions/upload-artifact/releases/tag/v7.0.1
+      - name: Upload accepted build manifests
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: accepted/
+          if-no-files-found: error
+          retention-days: 1
