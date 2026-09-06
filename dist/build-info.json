@@ -1,0 +1,35 @@
+{
+  "accepted_at": "2026-09-06T10:27:01Z",
+  "artifact_status": "accepted",
+  "build_role": "prod",
+  "build_timestamp": "2026-09-06T10:26:16Z",
+  "builder_sha": "3caaf72e6c6897eb8fa2e166ef940e142debe93f",
+  "candidate_artifact": {
+    "digest": "sha256:9b9287cad3244820f01974598891745466f85b900e817e2877dc2058a2d3e70d",
+    "id": "9987495319",
+    "name": "candidate-34027326563-1-target-v1-d52059fdd25adb2b3e134f85a01360ee51973e3f499440d82d903cf8eee20a05"
+  },
+  "cipher_profile": "age-x25519-v1",
+  "evidence_version": 1,
+  "expected_outputs": [
+    "leptonica.wasm",
+    "leptonica.mjs",
+    "build-info.json"
+  ],
+  "key_id": "candidate-2026-09",
+  "leptonica_pin_sha": "13275a278eb55b5746e33f95fbf5a2c8f604b3ab",
+  "payload_digest": "sha256:9674f03030d9a6f5c778bbfe6c566d7bb0ff1831bcc092888482e2a0b7c05766",
+  "release_id": "release-v1-314f08b5e8b5261d94d44db4d1b0175832c8c890a21a34863563fef0d8430477",
+  "repository": "killbus/leptonica-builder",
+  "source_ci": {
+    "status": "passed"
+  },
+  "source_contract_version": 1,
+  "source_revision": "0f2dcc6ae8d613845300fc0f04c518b80f09e94c",
+  "target_id": "target-v1-d52059fdd25adb2b3e134f85a01360ee51973e3f499440d82d903cf8eee20a05",
+  "transport_digest": "sha256:2f063b5a67e60a70e166ded36eca22fdd2ea417df454319d0136911fed05c25b",
+  "transport_profile": "envelope-v1",
+  "workflow_run_attempt": "1",
+  "workflow_run_id": "34027326563",
+  "workflow_run_number": "6"
+}
