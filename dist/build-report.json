@@ -1,0 +1,68 @@
+{
+  "mode": "default",
+  "provenance": {
+    "sdkVersion": "6.0.9",
+    "dependencyPins": {
+      "zlib": "da607da739fa6047df13e66a2af6b8bec7c2a498",
+      "libpng": "3061454d980de7d53608f594194cfac722721d2a",
+      "libjpeg-turbo": "c85e6b905bf237038faa936dab160ebfc5da0344",
+      "leptonica": "13275a278eb55b5746e33f95fbf5a2c8f604b3ab"
+    },
+    "dependencySources": {
+      "zlib": {
+        "commit": "da607da739fa6047df13e66a2af6b8bec7c2a498",
+        "sourceTreeSha256": "0b616375e5cb04f32c9c15cd4b92db9c079c15cf72d5be3ecdabc6464139c2e5",
+        "patchedSourceTreeSha256": "0b616375e5cb04f32c9c15cd4b92db9c079c15cf72d5be3ecdabc6464139c2e5",
+        "sourceIdentitySha256": "854ef8f2dace8997b640a401163ec47c9295f3e7acd671ad4db46901403a65cc",
+        "patchSetSha256": "ba5aa1ed4f59bdcc09261933b86aa55e31c756da7feb1924a3ecd6646d25f486",
+        "patches": []
+      },
+      "libpng": {
+        "commit": "3061454d980de7d53608f594194cfac722721d2a",
+        "sourceTreeSha256": "c4a82f76470fed63b0f3b62221fe8d8787d5dcba91667943143e3ed7b1b3cdce",
+        "patchedSourceTreeSha256": "c4a82f76470fed63b0f3b62221fe8d8787d5dcba91667943143e3ed7b1b3cdce",
+        "sourceIdentitySha256": "7eb2269c13fae4c4edea53127e2c505be4716a3d237ac4661b20cb780d4d1c69",
+        "patchSetSha256": "c483d5b3f8b758175fc4094ae2c1fdf4bdab42cde7187630bed0d75cdf04c116",
+        "patches": []
+      },
+      "libjpeg-turbo": {
+        "commit": "c85e6b905bf237038faa936dab160ebfc5da0344",
+        "sourceTreeSha256": "38a7b2a3747886f7e1b46f049597c02b54d8b2e44332b1d36b91baa1d188ee7e",
+        "patchedSourceTreeSha256": "38a7b2a3747886f7e1b46f049597c02b54d8b2e44332b1d36b91baa1d188ee7e",
+        "sourceIdentitySha256": "eeb2ae6d33db19844dc35e428fe857b9e4b4ee8a99d903d427a970ce1fa5da51",
+        "patchSetSha256": "79d40418a0a10485c6af9cfd0e442d8cbbab8ff28d37c8cb29a1b578769f0c4c",
+        "patches": []
+      },
+      "leptonica": {
+        "commit": "13275a278eb55b5746e33f95fbf5a2c8f604b3ab",
+        "sourceTreeSha256": "0bca39eb8c7127ef398ebc9be7946fb47c0db9b1e7394bd752189bdc2b2cf08c",
+        "patchedSourceTreeSha256": "99966c33881338ceb66941a3a97a6b297044a85274ef2c833356f237c98a70e8",
+        "sourceIdentitySha256": "1c0eae66bd5b5b2e0de13f4d5c70669a747ac60aab6dfa2eadf6bddc7a37ae90",
+        "patchSetSha256": "cadf01b41e00dfbdf421767afa3241a8d17a56611feb37473b9f196af6b2d033",
+        "patches": [
+          {
+            "file": "vendor/patches/leptonica-1.87.0-recoverable-oom.patch",
+            "appliesToCommit": "13275a278eb55b5746e33f95fbf5a2c8f604b3ab",
+            "sha256": "239040d17ba4c177fc905f675055892fa5ccf4ddcc1f1e8a13bc88ca8e24ecf8"
+          }
+        ]
+      }
+    },
+    "dependencyBuild": {
+      "buildIdentitySha256": "106db272a4eeb165ba1450ac6908df9f8f776457771fd9e856be8b6e44b2ce75",
+      "installTreeSha256": "4b8770dc2d6e1e9876c0449eca1653a392d69459d720e9e4b471d3b5297b64dd"
+    },
+    "optimizationLevel": "-O3"
+  },
+  "wasmBytes": 665974,
+  "wasmGzipBytes": 182308,
+  "jsBytes": 94017,
+  "jsGzipBytes": 25548,
+  "wasmSha256": "1fd1c57a6fa776ed0dfedcea8eb16a3a4dad6d918a55bef307d69c1be0e965c4",
+  "exportedFunctions": null,
+  "timingMs": {
+    "fetch": 2279,
+    "link": 4995
+  },
+  "wallMs": 91068
+}
