@@ -73,7 +73,7 @@ jobs:
           CONTRACT_VERSION: ${{ github.event_name == 'workflow_dispatch' && '2' || github.event.client_payload.contract_version }}
           SOURCE_REVISION: ${{ inputs.source_revision || github.event.client_payload.source_revision }}
           RELEASE_ID: ${{ inputs.release_id || github.event.client_payload.release_id }}
-          DISPATCH_MANIFEST: ${{ inputs.manifest || github.event.client_payload.manifest }}
+          DISPATCH_MANIFEST: ${{ inputs.manifest || toJSON(github.event.client_payload.manifest) }}
         run: |
           [[ "$CONFIGURED_SOURCE_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
             echo "::error::Candidate Build secret SOURCE_REPOSITORY is missing or invalid"
