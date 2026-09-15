@@ -338,7 +338,7 @@ jobs:
               | .version = $pkg_version
               | .private = false
               | .files = ["dist", "README.md", "LICENSE"]
-              | del(.scripts, .devDependencies) \
+              | del(.scripts, .devDependencies)' \
             package.json > candidate-payload/package.json
 
           bash .builder-ci/ci/build-info-contract.sh create-candidate \
