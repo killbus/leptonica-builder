@@ -333,9 +333,9 @@ jobs:
             PACKAGE_VERSION="1.0.0-${source_short}-dev"
           fi
           jq --arg name "@killbus/leptonica" \
-             --arg version "$PACKAGE_VERSION" \
+             --arg pkg_version "$PACKAGE_VERSION" \
              '.name = $name
-              | .version = $version
+              | .version = $pkg_version
               | .private = false
               | .files = ["dist", "README.md", "LICENSE"]
               | del(.scripts, .devDependencies) \
