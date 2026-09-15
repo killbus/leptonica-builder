@@ -680,4 +680,27 @@ done
 ! grep -F 'git <commit>' "$DEV_LOG" | grep -F 'owner/source' >/dev/null ||
   fail "private source repository leaked into release commit metadata"
 
+# Non-publishing manual validation entry (workflow_dispatch), aligned with
+# the pdfium-builder standard: the same build and acceptance pipeline runs
+# without publication, because release.yml only promotes
+# repository_dispatch runs.
+grep -F 'workflow_dispatch:' "$BUILD_WORKFLOW" >/dev/null || 
+  fail "build workflow is missing the manual validation entry"
+[[ "$(grep -F -c 'description: Exact 40-character source commit (validation only)' "$BUILD_WORKFLOW")" == 1 ]] || 
+  fail "manual validation input source_revision is not documented as validation-only"
+[[ "$(grep -F -c 'description: Canonical release-v1 ID' "$BUILD_WORKFLOW")" == 1 ]] || 
+  fail "manual validation input release_id is missing"
+[[ "$(grep -F -c 'description: Source-generated public release-set JSON (complete dev and prod set)' "$BUILD_WORKFLOW")" == 1 ]] || 
+  fail "manual validation input manifest is missing"
+# All three dispatched jobs accept both event types.
+[[ "$(grep -F -c 'github.event_name ==' "$BUILD_WORKFLOW")" -ge 3 ]] || 
+  fail "expected at least three job-level dispatch event checks"
+# The concurrency group namespaces by event type so a manual run cannot
+# cancel a dispatched run of the same release set, and vice versa.
+grep -F 'group: leptonica-build-' "$BUILD_WORKFLOW" | grep -F 'github.event_name' | grep -F 'inputs.release_id' >/dev/null || 
+  fail "concurrency group is not namespaced by event type and release ID"
+# Promotion stays gated on repository_dispatch: a manual validation run
+# must never reach the dev or prod publication path.
+grep -F "workflow_run.event == 'repository_dispatch'" "$RELEASE_WORKFLOW" >/dev/null || 
+  fail "release workflow does not gate promotion on repository_dispatch"
 printf 'accepted-build promotion tests passed\n'
