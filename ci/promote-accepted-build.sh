@@ -133,11 +133,14 @@ assemble_release_tree() {
   require_file "candidate license" "$ARTIFACT_DIR/LICENSE"
   [[ -z "$(find "$ARTIFACT_DIR" -name .git -print -quit)" ]] || \
     fail "candidate payload contains reserved Git metadata"
-  [[ -z "$(find "$ARTIFACT_DIR" -name package.json -print -quit)" ]] || \
-    fail "candidate payload contains package-manager metadata"
+  # Contract v2 publishes an installable package-manager artifact: the payload carries a
+  # single top-level package.json (synthesized by the build job).
+  [[ "$(find "$ARTIFACT_DIR" -name package.json | sort)" == "$ARTIFACT_DIR/package.json" ]] || \
+    fail "candidate payload package.json layout is invalid"
 
   cp -r "$ARTIFACT_DIR/dist" "$RELEASE_TEMP/"
   cp "$ARTIFACT_DIR/LICENSE" "$RELEASE_TEMP/"
+  cp "$ARTIFACT_DIR/package.json" "$RELEASE_TEMP/"
   cp "$ACCEPTED_MANIFEST" "$RELEASE_TEMP/dist/build-info.json"
 
   if [[ "$BUILD_ROLE" == "prod" ]]; then

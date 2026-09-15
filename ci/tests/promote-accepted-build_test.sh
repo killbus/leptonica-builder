@@ -114,6 +114,7 @@ create_candidate_payload() {
   mkdir -p "$output_dir/dist"
   printf 'candidate readme\n' >"$output_dir/README.md"
   printf 'license\n' >"$output_dir/LICENSE"
+  printf '{"name":"@killbus/leptonica","version":"1.0.0-test"}\n' >"$output_dir/package.json"
   printf 'wasm\n' >"$output_dir/dist/leptonica.wasm"
   printf 'esm\n' >"$output_dir/dist/leptonica.mjs"
   printf 'types\n' >"$output_dir/dist/leptonica.d.ts"
@@ -473,7 +474,8 @@ assert_package_metadata_fails() {
   mkdir -p "$case_dir/artifacts/dist" "$case_dir/acceptance"
   printf 'builder readme\n' >"$case_dir/README.md"
   create_candidate_payload "$case_dir/artifacts"
-  printf 'not a package\n' >"$case_dir/artifacts/package.json"
+  mkdir -p "$case_dir/artifacts/dist"
+  printf 'nested\n' >"$case_dir/artifacts/dist/package.json"
   create_accepted_manifest "$DEV_TARGET" dev >"$case_dir/acceptance/build-info.json"
 
   if (
