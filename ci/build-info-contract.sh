@@ -9,6 +9,12 @@ readonly TARGET_ID_PATTERN='^target-v1-[0-9a-f]{64}$'
 readonly ARTIFACT_DIGEST_INPUT_PATTERN='^(sha256:)?[0-9a-f]{64}$'
 readonly ARTIFACT_DIGEST_PATTERN='^sha256:[0-9a-f]{64}$'
 readonly TIMESTAMP_PATTERN='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+# Contract v2 sentinel list: the declared output set for every release target.
+# Defined once here and used by manifest validation, candidate/evidence/accepted
+# shape checks, and the create-candidate payload existence loop. Completeness
+# of the rest of the payload tree is guaranteed by payload_digest /
+# transport_digest, which cover the whole directory recursively.
+readonly CONTRACT_OUTPUTS='["dist/leptonica.mjs","dist/leptonica.wasm","dist/full-abi/leptonica.mjs","dist/full-abi/leptonica.wasm","dist/types/index.js","dist/types/raw/index.js","dist/worker.mjs","package.json","README.md","LICENSE"]'
 
 declare -A OPTIONS=()
 
@@ -61,7 +67,10 @@ require_release_id() { [[ "$2" =~ $RELEASE_ID_PATTERN ]] || fail "$1 is not a re
 require_target_id() { [[ "$2" =~ $TARGET_ID_PATTERN ]] || fail "$1 is not a target-v1 identity"; }
 require_timestamp() { [[ "$2" =~ $TIMESTAMP_PATTERN ]] || fail "$1 is not UTC ISO-8601"; }
 require_repository() { [[ "$2" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "$1 is not an owner/repository name"; }
-require_contract_version() { [[ "$1" == 1 ]] || fail "unsupported source contract version '$1'"; }
+require_contract_version() {
+  [[ "$1" == 2 ]] || \
+    fail "unsupported source contract version '$1' (contract v1 is no longer accepted)"
+}
 
 candidate_artifact_name() {
   printf 'candidate-%s-%s-%s' "$1" "$2" "$3"
@@ -76,6 +85,7 @@ validate_source_manifest() {
 
   jq -e \
     --argjson contract_version "$contract_version" \
+    --argjson contract_outputs "$CONTRACT_OUTPUTS" \
     --arg source_revision "$source_revision" \
     --arg release_id "$release_id" \
     '
@@ -94,7 +104,7 @@ validate_source_manifest() {
         (keys == ["build_role", "outputs", "target_id", "transport_profile"]) and
         (.target_id | type == "string" and test("^target-v1-[0-9a-f]{64}$")) and
         (.build_role == "dev" or .build_role == "prod") and
-        .outputs == ["leptonica.wasm", "leptonica.mjs", "build-info.json"] and
+        .outputs == $contract_outputs and
         .transport_profile == "envelope-v1")
     ' "$manifest" >/dev/null || fail "source release-set manifest is invalid"
 }
@@ -128,16 +138,17 @@ validate_source_build_info() {
 validate_candidate_shape() {
   local manifest="$1"
   require_file "candidate manifest" "$manifest"
-  jq -e --arg sha "$SHA_PATTERN" --arg timestamp "$TIMESTAMP_PATTERN" '
+  jq -e --arg sha "$SHA_PATTERN" --arg timestamp "$TIMESTAMP_PATTERN" \
+    --argjson contract_outputs "$CONTRACT_OUTPUTS" '
     type == "object" and
     (keys == ["artifact_status", "build_role", "build_timestamp", "builder_sha", "evidence_version", "expected_outputs", "leptonica_pin_sha", "release_id", "repository", "source_contract_version", "source_revision", "target_id", "transport_profile", "workflow_run_attempt", "workflow_run_id", "workflow_run_number"]) and
     .evidence_version == 1 and .artifact_status == "candidate" and
-    .source_contract_version == 1 and
+    .source_contract_version == 2 and
     (.release_id | type == "string" and test("^release-v1-[0-9a-f]{64}$")) and
     (.source_revision | type == "string" and test($sha)) and
     (.target_id | type == "string" and test("^target-v1-[0-9a-f]{64}$")) and
     (.build_role == "dev" or .build_role == "prod") and
-    .expected_outputs == ["leptonica.wasm", "leptonica.mjs", "build-info.json"] and
+    .expected_outputs == $contract_outputs and
     .transport_profile == "envelope-v1" and
     (.build_timestamp | type == "string" and test($timestamp)) and
     (.workflow_run_id | type == "string" and length > 0) and
@@ -152,16 +163,17 @@ validate_candidate_shape() {
 validate_evidence_shape() {
   local manifest="$1"
   require_file "candidate evidence" "$manifest"
-  jq -e --arg sha "$SHA_PATTERN" --arg timestamp "$TIMESTAMP_PATTERN" '
+  jq -e --arg sha "$SHA_PATTERN" --arg timestamp "$TIMESTAMP_PATTERN" \
+    --argjson contract_outputs "$CONTRACT_OUTPUTS" '
     type == "object" and
     (keys == ["artifact_status", "build_role", "build_timestamp", "builder_sha", "candidate_artifact", "cipher_profile", "evidence_version", "expected_outputs", "key_id", "leptonica_pin_sha", "payload_digest", "release_id", "repository", "source_contract_version", "source_revision", "target_id", "transport_digest", "transport_profile", "workflow_run_attempt", "workflow_run_id", "workflow_run_number"]) and
     .evidence_version == 1 and .artifact_status == "candidate" and
-    .source_contract_version == 1 and
+    .source_contract_version == 2 and
     (.release_id | type == "string" and test("^release-v1-[0-9a-f]{64}$")) and
     (.source_revision | type == "string" and test($sha)) and
     (.target_id | type == "string" and test("^target-v1-[0-9a-f]{64}$")) and
     (.build_role == "dev" or .build_role == "prod") and
-    .expected_outputs == ["leptonica.wasm", "leptonica.mjs", "build-info.json"] and
+    .expected_outputs == $contract_outputs and
     .transport_profile == "envelope-v1" and .cipher_profile == "age-x25519-v1" and
     (.key_id | type == "string" and test("^[A-Za-z0-9._-]+$")) and
     (.payload_digest | type == "string" and test("^sha256:[0-9a-f]{64}$")) and
@@ -184,16 +196,17 @@ validate_evidence_shape() {
 validate_accepted_shape() {
   local manifest="$1"
   require_file "accepted manifest" "$manifest"
-  jq -e --arg sha "$SHA_PATTERN" --arg timestamp "$TIMESTAMP_PATTERN" '
+  jq -e --arg sha "$SHA_PATTERN" --arg timestamp "$TIMESTAMP_PATTERN" \
+    --argjson contract_outputs "$CONTRACT_OUTPUTS" '
     type == "object" and
     (keys == ["accepted_at", "artifact_status", "build_role", "build_timestamp", "builder_sha", "candidate_artifact", "cipher_profile", "evidence_version", "expected_outputs", "key_id", "leptonica_pin_sha", "payload_digest", "release_id", "repository", "source_ci", "source_contract_version", "source_revision", "target_id", "transport_digest", "transport_profile", "workflow_run_attempt", "workflow_run_id", "workflow_run_number"]) and
     .evidence_version == 1 and .artifact_status == "accepted" and
-    .source_contract_version == 1 and
+    .source_contract_version == 2 and
     (.release_id | type == "string" and test("^release-v1-[0-9a-f]{64}$")) and
     (.source_revision | type == "string" and test($sha)) and
     (.target_id | type == "string" and test("^target-v1-[0-9a-f]{64}$")) and
     (.build_role == "dev" or .build_role == "prod") and
-    .expected_outputs == ["leptonica.wasm", "leptonica.mjs", "build-info.json"] and
+    .expected_outputs == $contract_outputs and
     .transport_profile == "envelope-v1" and .cipher_profile == "age-x25519-v1" and
     (.key_id | type == "string" and test("^[A-Za-z0-9._-]+$")) and
     (.payload_digest | type == "string" and test("^sha256:[0-9a-f]{64}$")) and
@@ -300,12 +313,12 @@ create_candidate() {
     }' >"$output"
 
   while IFS= read -r output_name; do
-    if [[ "$output_name" == "build-info.json" ]]; then
-      require_file "declared candidate output '$output_name'" "$payload_dir/$output_name"
-    else
-      require_file "declared candidate output '$output_name'" "$payload_dir/dist/$output_name"
-    fi
+    require_file "declared candidate output '$output_name'" "$payload_dir/$output_name"
   done < <(jq -r '.outputs[]' <<<"$target_json")
+
+  require_file "candidate package manifest" "$payload_dir/package.json"
+  package_name="$(jq -r '.name // empty' "$payload_dir/package.json")"
+  [[ "$package_name" == "@killbus/leptonica" ]] || fail "candidate package.json name must be '@killbus/leptonica', got '$package_name'"
   validate_candidate_shape "$output"
 }
 

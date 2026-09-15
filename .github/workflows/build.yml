@@ -70,7 +70,7 @@ jobs:
         id: contract
         env:
           CONFIGURED_SOURCE_REPOSITORY: ${{ secrets.SOURCE_REPOSITORY }}
-          CONTRACT_VERSION: ${{ github.event_name == 'workflow_dispatch' && '1' || github.event.client_payload.contract_version }}
+          CONTRACT_VERSION: ${{ github.event_name == 'workflow_dispatch' && '2' || github.event.client_payload.contract_version }}
           SOURCE_REVISION: ${{ inputs.source_revision || github.event.client_payload.source_revision }}
           RELEASE_ID: ${{ inputs.release_id || github.event.client_payload.release_id }}
           DISPATCH_MANIFEST: ${{ inputs.manifest || toJSON(github.event.client_payload.manifest) }}
@@ -267,6 +267,14 @@ jobs:
           node scripts/verify-toolchain.mjs
           rm -rf tmp/emsdk/downloads
 
+      # Install Node dependencies (typescript) required by gen-types.mjs,
+      # which is invoked by release_set.py build. --ignore-scripts follows
+      # the source CI convention (no postinstall needed for typescript).
+      - name: Install Node dependencies
+        run: |
+          corepack enable pnpm
+          pnpm install --frozen-lockfile --ignore-scripts
+
       - name: Build release target
         env:
           SOURCE_REVISION: ${{ needs.resolve-release-set.outputs.source_revision }}
@@ -313,6 +321,25 @@ jobs:
           mkdir -p candidate-payload candidate-metadata
           cp -r dist candidate-payload/
           cp README.md LICENSE candidate-payload/
+
+          # Contract v2: publish an installable npm package. The source
+          # package.json owns exports/sideEffects; rewrite identity for the
+          # builder branch publication (pdfium-isomorphic pattern).
+          source_short="${SOURCE_REVISION:0:7}"
+          target_digest="${TARGET_ID#target-v1-}"
+          if [[ "$BUILD_ROLE" == "prod" ]]; then
+            PACKAGE_VERSION="1.0.0-${source_short}.${target_digest}"
+          else
+            PACKAGE_VERSION="1.0.0-${source_short}-dev"
+          fi
+          jq --arg name "@killbus/leptonica" \
+             --arg version "$PACKAGE_VERSION" \
+             '.name = $name
+              | .version = $version
+              | .private = false
+              | .files = ["dist", "README.md", "LICENSE"]
+              | del(.scripts, .devDependencies) \
+            package.json > candidate-payload/package.json
 
           bash .builder-ci/ci/build-info-contract.sh create-candidate \
             --output candidate-payload/build-info.json \

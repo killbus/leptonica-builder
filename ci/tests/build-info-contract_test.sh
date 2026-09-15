@@ -5,7 +5,7 @@ set -euo pipefail
 readonly TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CONTRACT="$TEST_DIR/../build-info-contract.sh"
 readonly TRANSPORT="$TEST_DIR/../candidate-transport.sh"
-readonly CONTRACT_VERSION="1"
+readonly CONTRACT_VERSION="2"
 readonly BUILDER_SHA="1111111111111111111111111111111111111111"
 readonly SOURCE_REVISION="2222222222222222222222222222222222222222"
 readonly LEPTONICA_PIN_SHA="3333333333333333333333333333333333333333"
@@ -92,26 +92,26 @@ printf 'test identity\n' >"$WORK_DIR/identity.txt"
 
 cat >"$WORK_DIR/release-set.json" <<EOF
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "release_id": "$RELEASE_ID",
   "source_revision": "$SOURCE_REVISION",
   "targets": [
     {
       "target_id": "$DEV_TARGET",
       "build_role": "dev",
-      "outputs": ["leptonica.wasm", "leptonica.mjs", "build-info.json"],
+      "outputs": ["dist/leptonica.mjs", "dist/leptonica.wasm", "dist/full-abi/leptonica.mjs", "dist/full-abi/leptonica.wasm", "dist/types/index.js", "dist/types/raw/index.js", "dist/worker.mjs", "package.json", "README.md", "LICENSE"],
       "transport_profile": "envelope-v1"
     },
     {
       "target_id": "$PROD_TARGET_A",
       "build_role": "prod",
-      "outputs": ["leptonica.wasm", "leptonica.mjs", "build-info.json"],
+      "outputs": ["dist/leptonica.mjs", "dist/leptonica.wasm", "dist/full-abi/leptonica.mjs", "dist/full-abi/leptonica.wasm", "dist/types/index.js", "dist/types/raw/index.js", "dist/worker.mjs", "package.json", "README.md", "LICENSE"],
       "transport_profile": "envelope-v1"
     },
     {
       "target_id": "$PROD_TARGET_B",
       "build_role": "prod",
-      "outputs": ["leptonica.wasm", "leptonica.mjs", "build-info.json"],
+      "outputs": ["dist/leptonica.mjs", "dist/leptonica.wasm", "dist/full-abi/leptonica.mjs", "dist/full-abi/leptonica.wasm", "dist/types/index.js", "dist/types/raw/index.js", "dist/worker.mjs", "package.json", "README.md", "LICENSE"],
       "transport_profile": "envelope-v1"
     }
   ]
@@ -141,9 +141,19 @@ create_target_evidence() {
   transport_dir="$WORK_DIR/transports/$target_id"
   artifact_name="candidate-$RUN_ID-$RUN_ATTEMPT-$target_id"
 
-  mkdir -p "$payload_dir/dist" "$(dirname "$candidate")" "$WORK_DIR/evidence"
+  mkdir -p "$payload_dir/dist/full-abi" "$payload_dir/dist/types/raw" \
+    "$(dirname "$candidate")" "$WORK_DIR/evidence"
   printf 'wasm for %s\n' "$target_id" >"$payload_dir/dist/leptonica.wasm"
   printf 'esm for %s\n' "$target_id" >"$payload_dir/dist/leptonica.mjs"
+  printf 'full-abi wasm for %s\n' "$target_id" >"$payload_dir/dist/full-abi/leptonica.wasm"
+  printf 'full-abi esm for %s\n' "$target_id" >"$payload_dir/dist/full-abi/leptonica.mjs"
+  printf 'entry for %s\n' "$target_id" >"$payload_dir/dist/types/index.js"
+  printf 'raw entry for %s\n' "$target_id" >"$payload_dir/dist/types/raw/index.js"
+  printf 'worker for %s\n' "$target_id" >"$payload_dir/dist/worker.mjs"
+  jq -S -n --arg name "@killbus/leptonica" \
+    '{name: $name, version: "1.0.0-test"}' >"$payload_dir/package.json"
+  printf 'README for %s\n' "$target_id" >"$payload_dir/README.md"
+  printf 'LICENSE for %s\n' "$target_id" >"$payload_dir/LICENSE"
   jq -S -n \
     --argjson schema_version "$CONTRACT_VERSION" \
     --arg release_id "$RELEASE_ID" \
@@ -309,6 +319,22 @@ jq '.targets[0].outputs = ["leptonica.wasm"]' "$WORK_DIR/release-set.json" \
 assert_fails "wrong expected outputs" \
   contract validate-source-manifest \
     --manifest "$WORK_DIR/wrong-outputs-release-set.json" \
+    --contract-version "$CONTRACT_VERSION" \
+    --source-revision "$SOURCE_REVISION" \
+    --release-id "$RELEASE_ID"
+
+# Contract v1 manifests (curated-only outputs, schema_version 1) must be rejected.
+jq '.schema_version = 1 | .targets |= map(.outputs = ["leptonica.wasm", "leptonica.mjs", "build-info.json"])' \
+  "$WORK_DIR/release-set.json" >"$WORK_DIR/v1-release-set.json"
+assert_fails "v1 release set must be rejected" \
+  contract validate-source-manifest \
+    --manifest "$WORK_DIR/v1-release-set.json" \
+    --contract-version 1 \
+    --source-revision "$SOURCE_REVISION" \
+    --release-id "$RELEASE_ID"
+assert_fails "v1 release set must be rejected under v2" \
+  contract validate-source-manifest \
+    --manifest "$WORK_DIR/v1-release-set.json" \
     --contract-version "$CONTRACT_VERSION" \
     --source-revision "$SOURCE_REVISION" \
     --release-id "$RELEASE_ID"
