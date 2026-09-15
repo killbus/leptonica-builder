@@ -1,0 +1,64 @@
+{
+  "name": "@killbus/leptonica",
+  "version": "1.0.0-20444cd.f7eedbf8d16269bbdc1c2f38b9fe68f4b5c03f161b03304edbb28e71a13b6648",
+  "description": "Modern ESM/WASM build of Leptonica — curated image operators with a raw C-ABI escape hatch",
+  "private": false,
+  "type": "module",
+  "license": "BSD-2-Clause",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.34.5",
+  "sideEffects": [
+    "dist/worker.mjs",
+    "dist/types/worker/worker.mjs",
+    "dist/types/worker/worker.js"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/types/index.js"
+    },
+    "./raw": {
+      "types": "./dist/types/raw/index.d.ts",
+      "import": "./dist/types/raw/index.js"
+    },
+    "./worker": {
+      "node": {
+        "types": "./dist/types/worker/node.d.ts",
+        "import": "./dist/types/worker/node.js"
+      },
+      "default": {
+        "types": "./dist/types/worker/index.d.ts",
+        "import": "./dist/types/worker/index.js"
+      }
+    },
+    "./worker/node": {
+      "types": "./dist/types/worker/node.d.ts",
+      "import": "./dist/types/worker/node.js"
+    },
+    "./worker/worker.mjs": {
+      "types": "./dist/types/worker/worker.d.ts",
+      "import": "./dist/types/worker/worker.mjs"
+    },
+    "./full-abi/leptonica.mjs": {
+      "types": "./dist/full-abi/leptonica-raw.d.ts",
+      "import": "./dist/full-abi/leptonica.mjs"
+    },
+    "./full-abi/leptonica.wasm": {
+      "default": "./dist/full-abi/leptonica.wasm"
+    },
+    "./leptonica.mjs": {
+      "types": "./dist/leptonica.d.ts",
+      "import": "./dist/leptonica.mjs"
+    },
+    "./leptonica.wasm": {
+      "default": "./dist/leptonica.wasm"
+    }
+  }
+}
