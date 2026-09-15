@@ -305,6 +305,18 @@ jobs:
       - name: Check exports
         run: node scripts/check-exports.mjs dist
 
+      # Contract v2: the source self-imports use the repo package name
+      # ("leptonica-wasm/..."), but the builder publishes under the
+      # canonical name @killbus/leptonica. Rewrite the two runtime import
+      # specifiers in the emitted type-bridge JS so the installed package
+      # resolves its own subpath exports (pdfium-isomorphic post-process).
+      - name: Rewrite self-imports to the published package name
+        run: |
+          sed -i 's/import("leptonica-wasm\/leptonica.mjs")/import("@killbus\/leptonica\/leptonica.mjs")/' dist/types/core/load.js
+          sed -i 's/import("leptonica-wasm\/full-abi\/leptonica.mjs")/import("@killbus\/leptonica\/full-abi\/leptonica.mjs")/' dist/types/raw/index.js
+          grep -q '@killbus/leptonica/leptonica.mjs' dist/types/core/load.js
+          grep -q '@killbus/leptonica/full-abi/leptonica.mjs' dist/types/raw/index.js
+
       - name: Prepare candidate transport tooling
         run: bash .builder-ci/ci/install-age.sh
 
