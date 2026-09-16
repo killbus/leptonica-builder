@@ -1,0 +1,8 @@
+{
+  "schema_version": 2,
+  "release_id": "release-v1-ba7c4f41c0aeb3829ef4b50e6fd015461e343051e45f6ca3c1ead71f123a0ad2",
+  "source_revision": "23a9c289bf1707aea77a4aba5be11481f2c0e049",
+  "target_id": "target-v1-991db0c62e2ef65d6d23bb11c6c209e26fa839bd9e348463866faab8f455835b",
+  "build_role": "prod",
+  "transport_profile": "envelope-v1"
+}
